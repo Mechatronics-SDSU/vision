@@ -3,7 +3,6 @@ import cv2
 #socket import
 import socket
 #import for packing
-import sys
 import pickle
 import struct
 

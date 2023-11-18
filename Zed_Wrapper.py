@@ -1,7 +1,5 @@
 import pyzed.sl as sl
-import math
 import cv2
-import numpy as np
 import copy
 import statistics
 

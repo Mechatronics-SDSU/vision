@@ -1,10 +1,5 @@
 import yolov5
-import torch
 import cv2
-import numpy as np
-import urllib
-import Socket_Client
-import pickle
 
 
 class ObjDetModel:
