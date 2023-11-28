@@ -8,10 +8,10 @@ class Zed:
     def __init__(self):
         self.zed = sl.Camera()
         self.init_params = sl.InitParameters()
-        self.init_params.camera_resolution = sl.RESOLUTION.VGA
+        self.init_params.camera_resolution = sl.RESOLUTION.HD720
         self.init_params.camera_fps = 60
         self.init_params.coordinate_system = sl.COORDINATE_SYSTEM.RIGHT_HANDED_Y_UP
-        #self.init_params.depth_mode = sl.DEPTH_MODE.NEURAL
+        self.init_params.depth_mode = sl.DEPTH_MODE.NEURAL
         self.tracking_parameters = sl.PositionalTrackingParameters()
         self.tracking_parameters.enable_imu_fusion = True
         self.runtime_parameters = sl.RuntimeParameters()
@@ -54,8 +54,9 @@ class Zed:
         
     #get the median depth of all points within bounds of x1, y1, x2, y2
     def get_median_depth(self, x1, y1, x2, y2):
-        width = self.zed.get_camera_information().camera_resolution.width
-        height = self.zed.get_camera_information().camera_resolution.height
+        cam_info = self.zed.get_camera_information()
+        width = cam_info.camera_configuration.resolution.width
+        height = cam_info.camera_configuration.resolution.height
 
         #bounds check and success check
         if x1 > width or x2 > width:
@@ -66,8 +67,8 @@ class Zed:
             return -1
         
         #create depth camera object
-        depth_zed = sl.Mat(self.zed.get_camera_information().camera_resolution.width, 
-                            self.zed.get_camera_information().camera_resolution.height, 
+        depth_zed = sl.Mat(cam_info.camera_configuration.resolution.width, 
+                            cam_info.camera_configuration.resolution.height, 
                             sl.MAT_TYPE.F32_C1)
         
         # Retrieve depth data float 32
