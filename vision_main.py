@@ -1,17 +1,19 @@
-import Yolov5Detection as yv5
-import Socket_Client
+import vision.vision.Yolov5Detection as yv5
+import vision.vision.Socket_Client as Socket_Client
 import argparse
 import math
 import cv2
-import gui_helper
+import vision.vision.gui_helper as gui_helper
 import multiprocessing
 import time
+
+from multiprocessing import Process, Value
 
 import_success = True
 
 try:
     import pyzed.sl as sl 
-    from Zed_Wrapper import Zed
+    from vision.vision.Zed_Wrapper import Zed
 except:
     print("Zed library not found")
     import_success = False
@@ -28,24 +30,65 @@ args = parser.parse_args()
 
 class VideoRunner:
 
-    def __init__(self, zed):
-        self.zed = zed
+    def __init__(self, linear_acceleration_x , linear_acceleration_y, linear_acceleration_z, 
+                angular_velocity_x, angular_velocity_y, angular_velocity_z, 
+                orientation_x, orientation_y, orientation_z, 
+                depth,
+                offset_x, offset_y):
+        self.zed = Zed()
         self.cap = None
+        self.linear_acceleration_x = linear_acceleration_x
+        self.linear_acceleration_y = linear_acceleration_y
+        self.linear_acceleration_z = linear_acceleration_z
+        self.angular_velocity_x = angular_velocity_x
+        self.angular_velocity_y = angular_velocity_y
+        self.angular_velocity_z = angular_velocity_z
+        self.orientation_x = orientation_x
+        self.orientation_y = orientation_y
+        self.orientation_z = orientation_z
+        self.depth = depth
+        self.offset_x = offset_x
+        self.offset_y = offset_y
+        
+        self.detection = None
+        self.skip_frames = 3
+        self.frame_count = self.skip_frames
 
     
     #gets median of all objects, then returns the closest ones
-    def get_nearest_object(self, results, zed):
+    def get_nearest_object(self, results):
         nearest_object = math.inf
+        nearest_box = None
         for box in results.xyxy[0]:
             if box[5] != 0:
                 continue
 
-            median = zed.get_median_depth(int(box[0]), int(box[1]), int(box[2]), int(box[3]))
+            median = self.zed.get_median_depth(int(box[0]), int(box[1]), int(box[2]), int(box[3]))
             if not math.isnan(median) and not math.isinf(median) and not median <= 0:
                 nearest_object = min(median, nearest_object)
+                nearest_box = box
                 
-        return nearest_object
-
+        return nearest_object, nearest_box
+    
+    def get_offset(self, box, results, image):
+        if (box is None):
+            return 0, 0
+        
+        center_x = image.shape[1] // 2
+        center_y = image.shape[0] // 2
+        
+        xB = int(box[2])
+        xA = int(box[0])
+        yB = int(box[3])
+        yA = int(box[1])
+        object_center_x = (xB + xA) / 2
+        object_center_y = (yB + yA) / 2
+        
+        offset_x = center_x - object_center_x
+        offset_y = center_y - object_center_y
+        
+        return offset_x, offset_y
+        
 
     def parse_arguments(self):
         host = args.host_ip
@@ -121,33 +164,33 @@ class VideoRunner:
         
         return image
 
+    def swap_model(self, model_name):
+        self.detection.load_new_model(model_name)
+
 
     def run_loop(self):
         host, port, show_boxes, model_name, get_depth, show_depth = self.parse_arguments()
 
         socket = Socket_Client.Client(host, port)
         socket.connect_to_server()
-        detection = yv5.ObjDetModel(model_name)
+        self.detection = yv5.ObjDetModel(model_name)
+        
         depth = 0
 
         #create camera objects
         self.zed, self.cap = self.create_camera_object()
-        test_start = time.time()
-        not_swapped = True
-
-
+        
         while True:
             start_time = time.perf_counter()
             image = self.get_image(self.zed, self.cap)
 
-            #testing hot swapping models
-            if time.time() - test_start> 10 and not_swapped:
-                print("swap")
-                detection.load_new_model('./models_folder/best.pt')
-                not_swapped = False
 
             #run yolo detection
-            results = detection.detect_in_image(image)
+            if (self.frame_count >= self.skip_frames):
+                results = self.detection.detect_in_image(image)
+                self.frame_count = 0
+            else:
+                self.frame_count += 1
 
             #get depth image from the zed if zed is initialized and user added the show depth argument
             if self.zed is not None and show_depth:
@@ -158,14 +201,27 @@ class VideoRunner:
                 image = gui_helper.draw_lines(image, results)
             #get depth of nearest object(set to True by default)
             if self.zed is not None and get_depth:
-                depth = self.get_nearest_object(results, self.zed)
-                print("depth: ", depth)
+                depth, box = self.get_nearest_object(results)
+                
+                self.offset_x.value, self.offset_y.value = self.get_offset(box, results, image)
+                self.depth.value = depth
             
             #starting imu code
-            orientation, lin_acc, ang_vel = self.zed.get_imu()
-            #print("orientation : \t", orientation)
-            #print("linear acceleration: \t", lin_acc)
-            #print("angular velocity: \t", ang_vel)
+            if (import_success):
+                orientation, lin_acc, ang_vel = self.zed.get_imu()
+                
+                #set shared memory values
+                self.linear_acceleration_x.value = lin_acc[0]
+                self.linear_acceleration_y.value = lin_acc[1]
+                self.linear_acceleration_z.value = lin_acc[2]
+                self.angular_velocity_x.value = ang_vel[0]
+                self.angular_velocity_y.value = ang_vel[1]
+                self.angular_velocity_z.value = ang_vel[2]
+                self.orientation_x.value = orientation[0]
+                self.orientation_y.value = orientation[1]
+                self.orientation_z.value = orientation[2]
+
+                
 
 
             #send image over socket on another processor
