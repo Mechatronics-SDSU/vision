@@ -6,7 +6,13 @@ import socket
 import pickle
 import struct
 
-
+'''
+    discord: @kialli
+    github: @kchan5071
+    
+    connects to server and sends video data from numpy arrays to server
+    
+'''
 
 class Client:
     def __init__(self, host, port):

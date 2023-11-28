@@ -1,5 +1,12 @@
 import cv2
 
+'''
+    discord: @kialli
+    github: @kchan5071
+    
+    draw boxes and lines on image
+    
+'''
 
 #draws boxes on image
 def draw_boxes(image, results):

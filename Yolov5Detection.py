@@ -2,6 +2,17 @@ import yolov5
 import cv2
 
 
+'''
+    discord: @kialli
+    github: @kchan5071
+    
+    class to run object detection model
+    
+    self explanatory usage
+    
+'''
+
+
 class ObjDetModel:
 
     def __init__(self, model_name):

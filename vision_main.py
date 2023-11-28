@@ -7,7 +7,20 @@ import vision.vision.gui_helper as gui_helper
 import multiprocessing
 import time
 
-from multiprocessing import Process, Value
+from multiprocessing import Value
+
+'''
+    discord: @kialli
+    github: @kchan5071
+    
+    main class to run vision code
+    
+    usage:
+    initialize class
+    run loop
+    
+'''
+
 
 import_success = True
 
