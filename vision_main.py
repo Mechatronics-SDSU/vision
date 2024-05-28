@@ -64,7 +64,7 @@ class VideoRunner:
         self.offset_y = offset_y
         
         self.detection = None
-        self.skip_frames = 3
+        self.skip_frames = 0
         self.frame_count = self.skip_frames
 
     
@@ -112,10 +112,10 @@ class VideoRunner:
         show_depth = args.show_depth
 
         if host is None:
-            host = '127.0.0.1'
+            host = '192.168.194.3'
 
         if port is None:
-            port = 8089
+            port = 8990
 
         if show_boxes is None or show_boxes == 'True':
             show_boxes = True
@@ -194,9 +194,7 @@ class VideoRunner:
         self.zed, self.cap = self.create_camera_object()
         
         while True:
-            start_time = time.perf_counter()
             image = self.get_image(self.zed, self.cap)
-
 
             #run yolo detection
             if (self.frame_count >= self.skip_frames):
@@ -217,7 +215,7 @@ class VideoRunner:
                 depth, box = self.get_nearest_object(results)
                 
                 self.offset_x.value, self.offset_y.value = self.get_offset(box, results, image)
-                self.depth.value = depth
+                self.depth.value = float(depth)
             
             #starting imu code
             if (import_success):
@@ -240,9 +238,6 @@ class VideoRunner:
             #send image over socket on another processor
             send_process = multiprocessing.Process(target = self.send_image_to_socket(socket, image))
             send_process.start()
-            end_time = time.perf_counter()
-            #print("loop time: ", end_time - start_time)
-
 
 
 if __name__ == '__main__':
