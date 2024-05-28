@@ -1,17 +1,13 @@
-import Yolov5Detection as yv5
-import Socket_Client as Socket_Client
+import zed_vision.Yolov5Detection as yv5
+import zed_vision.Socket_Client as Socket_Client
 import argparse
 import math
 import cv2
-import gui_helper as gui_helper
+import zed_vision.gui_helper as gui_helper
 import multiprocessing
 import time
 
-from multiprocessing import Value
-
-import numpy as np
-import os
-import socket
+from Motor_Interface.motor_interface import MotorInterface
 
 '''
     discord: @kialli
@@ -38,8 +34,10 @@ except:
     import_success = False
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-host_ip', help='ip to send images to', required=False, default="192.168.194.3")
-parser.add_argument('-port', help='port to send images over', required=False, default=8089)
+parser.add_argument('-video_host', help='ip to send images to', required=False, default="192.168.194.3")
+parser.add_argument('-video_port', help='port to send images over', required=False, default=8089)
+parser.add_argument('-command_host', help='ip to send images to', required=False, default="127.0.0.1")
+parser.add_argument('-command_port', help='port to send images over', required=False, default=8089)
 parser.add_argument('-show_boxes',help='boolean to show object detection boxes', required=False)
 parser.add_argument('-model_name', help='model to run on', required=False)
 parser.add_argument('-show_depth', help='show depth map', required=False)
@@ -72,18 +70,6 @@ class VideoRunner:
         self.detection = None
         self.skip_frames = 3
         self.frame_count = self.skip_frames
-        self.REASONABLE_MOTOR_MAX = 30
-        self.motors = [
-            [ 0, -1, -1,  0,  0,  1],
-            [ 1,  0,  0,  1,  1,  0],
-            [ 0,  1, -1,  0,  0,  1],
-            [ 1,  0,  0,  1, -1,  0],
-            [ 0,  1,  1,  0,  0,  1],
-            [-1,  0,  0,  1,  1,  0],
-            [ 0, -1,  1,  0,  0,  1],
-            [-1,  0,  0,  1, -1,  0]
-        ]
-
     
     #gets median of all objects, then returns the closest ones
     def get_nearest_object(self, results):
@@ -124,18 +110,14 @@ class VideoRunner:
         
 
     def parse_arguments(self):
-        host = args.host_ip
-        port = int(args.port)
+        video_host = args.video_host
+        video_port = int(args.video_port)
+        motors_host = args.motors_host
+        motors_port = int(args.motors_port)
         show_boxes = args.show_boxes
         model_name = args.model_name
         get_depth = args.get_depth
         show_depth = args.show_depth
-
-        if host is None:
-            host = '192.168.194.3'
-
-        if port is None:
-            port = 8089
 
         if show_boxes is None or show_boxes == 'True':
             show_boxes = True
@@ -157,7 +139,7 @@ class VideoRunner:
         else:
             model_name = "./models_folder/" + model_name
 
-        return host, port, show_boxes, model_name, get_depth, show_depth
+        return video_host, video_port, motors_host, motors_port, show_boxes, model_name, get_depth, show_depth
 
     #creates camera objects
     def create_camera_object(self):
@@ -200,43 +182,15 @@ class VideoRunner:
     def swap_model(self, model_name):
         self.detection.load_new_model(model_name)
 
-    def send_command(self, s, command):
-        clientsocket, address = s.accept()
-        print(f"Connection from {address} has been established.")
-        clientsocket.send(bytes(command, "utf-8"))
-        clientsocket.close()
-        
-    def connect_to_socket(self):
-        port = 6979
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.bind(("127.0.0.1", port))
-        s.listen(5)
-        return s
-    
-    def read(self): # return the buttons/triggers that you care about in this methode
-        
-        self.input_list = [self.yaw, self.pitch, self.roll, self.offset_x, self.offset_y, self.z]
-        thrust_list = []
-        for motor in self.motors:
-            thrust_list.append(int(self.REASONABLE_MOTOR_MAX * np.dot(motor, self.input_list)))
-
-
-        command = ""
-        for motor_value in thrust_list:
-            motor_val = '{:02X}'.format(abs(motor_value))
-            command += motor_val
-        
-        #self.send_command(self.connect_to_socket(), command)
-        #send command to socket 
-        print("cansend can0 010#" + command)
-        os.system("cansend can0 010#" + command)
-        return command
-
     def run_loop(self):
-        host, port, show_boxes, model_name, get_depth, show_depth = self.parse_arguments()
+        video_host, video_port, motors_host, motors_port, show_boxes, model_name, get_depth, show_depth = self.parse_arguments()
 
-        socket = Socket_Client.Client(host, port)
-        socket.connect_to_server()
+        video_socket = Socket_Client.Client(video_host, video_port)
+        video_socket.connect_to_server()
+
+        motors_socket = Socket_Client.Client(motors_host, motors_port)
+        motors_socket.connect_to_server()
+        
         self.detection = yv5.ObjDetModel(model_name)
         
         depth = 0
@@ -270,12 +224,21 @@ class VideoRunner:
                 self.offset_x, self.offset_y = self.get_offset(box, results, image)
                 self.depth = depth
 
-                self.yaw = 0
-                self.pitch = 0
-                self.roll = 0
-                self.z = 0
-
-                self.read()
+                motors = MotorInterface(
+                    self.linear_acceleration_x,
+                    self.linear_acceleration_y,
+                    self.linear_acceleration_z, 
+                    self.angular_velocity_x,
+                    self.angular_velocity_y,
+                    self.angular_velocity_z, 
+                    self.orientation_x,
+                    self.orientation_y,
+                    self.orientation_z, 
+                    self.depth,
+                    self.offset_x,
+                    self.offset_y
+                )
+                motors.move_motors()
             
             #starting imu code
             if (import_success):
@@ -291,15 +254,68 @@ class VideoRunner:
                 self.orientation_x = orientation[0]
                 self.orientation_y = orientation[1]
                 self.orientation_z = orientation[2]
+import MotorWrapper
+
+class MotorInterface:
+
+    def __init__(self, linear_acceleration_x , linear_acceleration_y, linear_acceleration_z, 
+                angular_velocity_x, angular_velocity_y, angular_velocity_z, 
+                orientation_x, orientation_y, orientation_z, 
+                depth,
+                offset_x, offset_y):
+        self.linear_acceleration_x = linear_acceleration_x
+        self.linear_acceleration_y = linear_acceleration_y
+        self.linear_acceleration_z = linear_acceleration_z
+        self.angular_velocity_x = angular_velocity_x
+        self.angular_velocity_y = angular_velocity_y
+        self.angular_velocity_z = angular_velocity_z
+        self.orientation_x = orientation_x
+        self.orientation_y = orientation_y
+        self.orientation_z = orientation_z
+        self.depth = depth
+        self.offset_x = offset_x
+        self.offset_y = offset_y
+
+        self.max_iterations = 10000
+        self.iterations = 0
+
+
+    def run_loop(self):
+        
+        while (self.iterations < self.max_iterations):
+            if (self.offset_x.value > 0):
+                MotorWrapper.move_right(.1)
+                MotorWrapper.send_command()
+                return
+            elif (self.offset_x.value < 0):
+                MotorWrapper.move_left(.1)
+                MotorWrapper.send_command()
+                return
+            if (self.offset_y.value > 0):
+                MotorWrapper.move_up(.1)
+                MotorWrapper.send_command()
+                return
+            elif (self.offset_y.value < 0):
+                MotorWrapper.move_down(.1)
+                MotorWrapper.send_command()
+                return
+
+            MotorWrapper.move_forward(.1)
+            MotorWrapper.send_command()
+            self.iterations += 1
+
+    
+
+        
 
                 
 
 
-            #send image over socket on another processor
-            send_process = multiprocessing.Process(target = self.send_image_to_socket(socket, image))
+            # send image over socket on another processor
+            send_process = multiprocessing.Process(target = self.send_image_to_socket(video_socket, image))
             send_process.start()
-            end_time = time.perf_counter()
-            #print("loop time: ", end_time - start_time)
+            # end_time = time.perf_counter()
+            # print("loop time: ", end_time - start_time)
 
 
 

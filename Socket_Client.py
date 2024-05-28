@@ -32,14 +32,24 @@ class Client:
             self.client_socket = None
 
     def send_video(self, frame):
-        
-        if self.client_socket is None:
-            print("Connection not established. Cannot send video.")
-            return
 
         try:
             small_frame = cv2.resize(frame, None, fx=0.4, fy=0.4)
             data = pickle.dumps(small_frame)
-            self.client_socket.sendall(struct.pack("=L", len(data)) + data)
-        except Exception as e:
-            raise Exception(f"Error occurred while sending video data: {e}")
+        except Exception as exception:
+            raise Exception(f"Error occurred while preparing image to be sent: {exception}")
+    
+        try:
+            self.send_bytes(data = struct.pack("=L", len(data)) + data, data_description = "image")
+        except Exception as exception:
+            raise exception
+        
+    def send_bytes(self, data: bytes, data_description: str = "data"):
+
+        if self.client_socket is None:
+            raise Exception(f"Connection not established. Cannot send {data_description} to socket.")
+        
+        try:
+            data = self.client_socket.sendall(data)
+        except Exception as exception:
+            raise Exception(f"Error occurred while sending {data_description} to socket: {exception}")

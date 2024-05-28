@@ -63,7 +63,7 @@ class Server:
             
 
 def main():
-    host = '127.0.0.1'
+    host = '192.168.194.3'
     port = 8089
     package_size = 442504
     server = Server(host, port, package_size)
