@@ -1,7 +1,9 @@
-import vision.Yolov5Detection    as yv5
-import vision.Socket_Client      as Socket_Client
-from vision.color_filter         import ColorFilter
-import vision.gui_helper         as gui_helper
+import vision.Yolov5Detection                           as yv5
+import vision.Socket_Client                             as Socket_Client
+import vision.gui_helper                                as gui_helper
+
+from vision.ColorFilter.color_filter                    import ColorFilter
+from vision.ColorFilter.color_filter_config_parser      import ColorFilterConfigParser
 
 import math
 import cv2
