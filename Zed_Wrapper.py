@@ -3,25 +3,25 @@ import cv2
 import copy
 import statistics
 
-'''
-    discord: @kialli
-    github: @kchan5071
-    
-    wrapper class for zed camera
-    
-    usage:
-    initialize
-    open camera
-    
-    then can get image, imu data, and depth image
-    
-    can also get median depth of a rectangle(4 points) in the image
-    
-    also has main function to test zed camera functionality
-    
-'''
-
 class Zed:
+
+    '''
+        discord: @kialli
+        github: @kchan5071
+        
+        wrapper class for zed camera
+        
+        usage:
+        initialize
+        open camera
+        
+        then can get image, imu data, and depth image
+        
+        can also get median depth of a rectangle(4 points) in the image
+        
+        also has main function to test zed camera functionality
+        
+    '''
     
     def __init__(self):
         self.zed = sl.Camera()

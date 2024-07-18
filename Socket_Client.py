@@ -6,15 +6,16 @@ import socket
 import pickle
 import struct
 
-'''
+class Client:
+    '''
     discord: @kialli
     github: @kchan5071
     
     connects to server and sends video data from numpy arrays to server
-    
-'''
 
-class Client:
+    this class is not used in production code, but is used for testing
+    
+    '''
     def __init__(self, host, port):
         self.HOST = host
         self.PORT = port

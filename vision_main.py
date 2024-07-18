@@ -1,15 +1,25 @@
-import vision.vision.Yolov5Detection as yv5
-import vision.vision.Socket_Client as Socket_Client
-import argparse
+import vision.Yolov5Detection    as yv5
+import vision.Socket_Client      as Socket_Client
+from vision.color_filter         import ColorFilter
+import vision.gui_helper         as gui_helper
+
 import math
 import cv2
-import vision.vision.gui_helper as gui_helper
 import multiprocessing
 import time
+from multiprocessing             import Value
 
-from multiprocessing import Value
+import_success = True
 
-'''
+try:
+    import pyzed.sl as sl 
+    from vision.Zed_Wrapper       import Zed
+except:
+    print("Zed library not found")
+    import_success = False
+
+class VideoRunner:
+    '''
     discord: @kialli
     github: @kchan5071
     
@@ -19,35 +29,13 @@ from multiprocessing import Value
     initialize class
     run loop
     
-'''
+    '''
 
-
-import_success = True
-
-try:
-    import pyzed.sl as sl 
-    from vision.vision.Zed_Wrapper import Zed
-except:
-    print("Zed library not found")
-    import_success = False
-
-parser = argparse.ArgumentParser()
-parser.add_argument('-host_ip', help='ip to send images to', required=False)
-parser.add_argument('-port', help='port to send images over', required=False)
-parser.add_argument('-show_boxes',help='boolean to show object detection boxes', required=False)
-parser.add_argument('-model_name', help='model to run on', required=False)
-parser.add_argument('-show_depth', help='show depth map', required=False)
-parser.add_argument('-get_depth', help='get depth map', required=False)
-args = parser.parse_args()
-
-
-class VideoRunner:
-
-    def __init__(self, linear_acceleration_x , linear_acceleration_y, linear_acceleration_z, 
-                angular_velocity_x, angular_velocity_y, angular_velocity_z, 
-                orientation_x, orientation_y, orientation_z, 
-                depth,
-                offset_x, offset_y):
+    def __init__(self,  linear_acceleration_x ,  linear_acceleration_y,  linear_acceleration_z, 
+                        angular_velocity_x,      angular_velocity_y,     angular_velocity_z, 
+                        orientation_x,           orientation_y,          orientation_z, 
+                        depth,
+                        offset_x, offset_y):
         self.zed = Zed()
         self.cap = None
         self.linear_acceleration_x = linear_acceleration_x
@@ -62,11 +50,14 @@ class VideoRunner:
         self.depth = depth
         self.offset_x = offset_x
         self.offset_y = offset_y
+
+
+        self.color_filter_enable = True
+        self.color_filter = ColorFilter()
         
         self.detection = None
         self.skip_frames = 0
         self.frame_count = self.skip_frames
-
     
     #gets median of all objects, then returns the closest ones
     def get_nearest_object(self, results):
@@ -83,6 +74,12 @@ class VideoRunner:
                 
         return nearest_object, nearest_box
     
+    def enable_color_filter(self):
+        self.color_filter_enable = True
+
+    def set_color_filter(self, color_filter):
+        self.color_filter = color_filter
+
     def get_offset(self, box, results, image):
         if (box is None):
             return 0, 0
@@ -102,43 +99,6 @@ class VideoRunner:
         
         return offset_x, offset_y
         
-
-    def parse_arguments(self):
-        host = args.host_ip
-        port = args.port
-        show_boxes = args.show_boxes
-        model_name = args.model_name
-        get_depth = args.get_depth
-        show_depth = args.show_depth
-
-        if host is None:
-            host = '192.168.194.3'
-
-        if port is None:
-            port = 8990
-
-        if show_boxes is None or show_boxes == 'True':
-            show_boxes = True
-        else:
-            show_boxes = False
-
-        if get_depth is None or get_depth == 'True':
-            get_depth = True
-        else:
-            get_depth = False
-
-        if show_depth is None or show_depth == 'False':
-            show_depth = False
-        else:
-            show_depth = True
-
-        if model_name is None:
-            model_name = './models_folder/yolov5m.pt'
-        else:
-            model_name = "./models_folder/" + model_name
-
-        return host, port, show_boxes, model_name, get_depth, show_depth
-
     #creates camera objects
     def create_camera_object(self):
         zed = None
@@ -180,9 +140,28 @@ class VideoRunner:
     def swap_model(self, model_name):
         self.detection.load_new_model(model_name)
 
+    def get_imu(self):
+        orientation, lin_acc, ang_vel = self.zed.get_imu()
+        
+        #set shared memory values
+        self.linear_acceleration_x.value = lin_acc[0]
+        self.linear_acceleration_y.value = lin_acc[1]
+        self.linear_acceleration_z.value = lin_acc[2]
+        self.angular_velocity_x.value = ang_vel[0]
+        self.angular_velocity_y.value = ang_vel[1]
+        self.angular_velocity_z.value = ang_vel[2]
+        self.orientation_x.value = orientation[0]
+        self.orientation_y.value = orientation[1]
+        self.orientation_z.value = orientation[2]
 
     def run_loop(self):
-        host, port, show_boxes, model_name, get_depth, show_depth = self.parse_arguments()
+        host = '192.168.194.3'
+        port = 8991
+        show_boxes = True
+        get_depth = True
+        show_depth = False
+        model_name = './models_folder/yolov5m.pt'
+        IMU_enable = False
 
         socket = Socket_Client.Client(host, port)
         socket.connect_to_server()
@@ -202,7 +181,6 @@ class VideoRunner:
                 self.frame_count = 0
             else:
                 self.frame_count += 1
-
             #get depth image from the zed if zed is initialized and user added the show depth argument
             if self.zed is not None and show_depth:
                 image = self.zed.get_depth_image()
@@ -216,28 +194,12 @@ class VideoRunner:
                 
                 self.offset_x.value, self.offset_y.value = self.get_offset(box, results, image)
                 self.depth.value = float(depth)
-            
+                
             #starting imu code
-            if (import_success):
-                orientation, lin_acc, ang_vel = self.zed.get_imu()
-                
-                #set shared memory values
-                self.linear_acceleration_x.value = lin_acc[0]
-                self.linear_acceleration_y.value = lin_acc[1]
-                self.linear_acceleration_z.value = lin_acc[2]
-                self.angular_velocity_x.value = ang_vel[0]
-                self.angular_velocity_y.value = ang_vel[1]
-                self.angular_velocity_z.value = ang_vel[2]
-                self.orientation_x.value = orientation[0]
-                self.orientation_y.value = orientation[1]
-                self.orientation_z.value = orientation[2]
-
-                
-
-
-            #send image over socket on another processor
-            send_process = multiprocessing.Process(target = self.send_image_to_socket(socket, image))
-            send_process.start()
+            if (import_success and IMU_enable):
+                self.get_imu()
+            # send_process = multiprocessing.Process(target = self.send_image_to_socket(socket, image))
+            # send_process.start()
 
 
 if __name__ == '__main__':

@@ -2,7 +2,8 @@ import yolov5
 import cv2
 
 
-'''
+class ObjDetModel:
+    '''
     discord: @kialli
     github: @kchan5071
     
@@ -10,10 +11,7 @@ import cv2
     
     self explanatory usage
     
-'''
-
-
-class ObjDetModel:
+    '''
 
     def __init__(self, model_name):
         # load pretrained model
