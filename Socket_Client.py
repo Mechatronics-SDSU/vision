@@ -7,7 +7,7 @@ import pickle
 import struct
 
 class Client:
-    '''
+    """
     discord: @kialli
     github: @kchan5071
     
@@ -15,7 +15,7 @@ class Client:
 
     this class is not used in production code, but is used for testing
     
-    '''
+    """
     def __init__(self, host, port):
         self.HOST = host
         self.PORT = port
@@ -23,6 +23,9 @@ class Client:
         print("Set Client Variables")
 
     def connect_to_server(self):
+        """
+            connects to server
+        """
         try:
             self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             print("Connecting to the server...")
@@ -33,7 +36,11 @@ class Client:
             self.client_socket = None
 
     def send_video(self, frame):
-
+        """
+            turns frame into bytes and sends to server using send_bytes
+            input:
+                frame: np_array
+        """
         try:
             small_frame = cv2.resize(frame, None, fx=0.4, fy=0.4)
             data = pickle.dumps(small_frame)
@@ -46,7 +53,12 @@ class Client:
             raise exception
         
     def send_bytes(self, data: bytes, data_description: str = "data"):
-
+        """
+            Sends bytes to the connected socket.
+            input:
+                data: bytes to send
+                data_description: description of data to send
+        """
         if self.client_socket is None:
             raise Exception(f"Connection not established. Cannot send {data_description} to socket.")
         

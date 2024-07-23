@@ -1,15 +1,23 @@
 import cv2
 
-'''
+"""
     discord: @kialli
     github: @kchan5071
     
     draw boxes and lines on image
-    
-'''
+    used in gui for testing
+    not used in competition
+"""
 
-#draws boxes on image
 def draw_boxes(image, results):
+    """
+        draws bounding boxes on image
+        input
+            image: np_array
+            results: yolov5 results object
+        return
+            image: np_array
+    """
     for box in results.xyxy[0]:
         if box[5] == 0:
             xB = int(box[2])
@@ -19,9 +27,15 @@ def draw_boxes(image, results):
             cv2.rectangle(image, (xA, yA), (xB, yB), (0, 255, 0), 2)
     return image
 
-#draws lines on image
 def draw_lines(image, results):
-    # Draw a line from the center of the image to the center of the detected object
+    """
+        draws lines from center of image to center of bounding boxes
+        input
+            image: np_array
+            results: yolov5 results object
+        return
+            image: np_array
+    """
     start = (0, 0)
     try:
         start = (int(image.shape[1] / 2), int(image.shape[0] / 2))
