@@ -4,8 +4,7 @@ import copy
 import statistics
 
 class Zed:
-
-    '''
+    """
         discord: @kialli
         github: @kchan5071
         
@@ -20,60 +19,98 @@ class Zed:
         can also get median depth of a rectangle(4 points) in the image
         
         also has main function to test zed camera functionality
-        
-    '''
+    """
     
     def __init__(self):
-        self.zed = sl.Camera()
-        self.init_params = sl.InitParameters()
-        self.init_params.camera_resolution = sl.RESOLUTION.HD720
-        self.init_params.camera_fps = 60
-        self.init_params.coordinate_system = sl.COORDINATE_SYSTEM.RIGHT_HANDED_Y_UP
-        self.init_params.depth_mode = sl.DEPTH_MODE.NEURAL
-        self.tracking_parameters = sl.PositionalTrackingParameters()
-        self.tracking_parameters.enable_imu_fusion = True
-        self.runtime_parameters = sl.RuntimeParameters()
-        #self.err = self.zed.enable_positional_tracking(self.tracking_parameters)
-        self.py_translation = sl.Translation()
+        self.zed                                    = sl.Camera()
+        self.init_params                            = sl.InitParameters()
+        self.init_params.camera_resolution          = sl.RESOLUTION.HD720
+        self.init_params.camera_fps                 = 60
+        self.init_params.coordinate_system          = sl.COORDINATE_SYSTEM.RIGHT_HANDED_Y_UP
+        self.init_params.depth_mode                 = sl.DEPTH_MODE.NEURAL
+        self.tracking_parameters                    = sl.PositionalTrackingParameters()
+        self.tracking_parameters.enable_imu_fusion  = True
+        self.runtime_parameters                     = sl.RuntimeParameters()
+        #self.err                                    = self.zed.enable_positional_tracking(self.tracking_parameters)
+        self.py_translation                         = sl.Translation()
 
-    #opens camera, returns state to be compared against sl.ERROR_CODE.SUCCESS
+    
     def open(self):
+        """
+            open the zed camera and returns state of camera
+            return
+                state: sl.ERROR_CODE.SUCCESS is expected
+        """
         state = self.zed.open(self.init_params)
         return state
 
-    #get color image from zed camera
     def get_image(self):
+        """
+            get color image from zed camera
+            return
+                image: np_array
+
+            for some reason the python garbage collector was deleting the image object
+            so we used copy.deepcopy to clone the object in memory
+        """
         image_zed = sl.Mat()
         if self.zed.grab() == sl.ERROR_CODE.SUCCESS:
             self.zed.retrieve_image(image_zed, sl.VIEW.RIGHT)
             return copy.deepcopy(image_zed.get_data())
 
-    #get imu data
     def get_imu(self):
+        """
+            zed camera has an IMU, this function returns the quaternion(pose), linear acceleration, and angular velocity
+            return
+                quaternion: sl.float4
+                linear_acceleration: sl.float3
+                angular_velocity: sl.float3
+        """
         sensors_data = sl.SensorsData()
         if self.zed.grab() == sl.ERROR_CODE.SUCCESS:
             self.zed.get_sensors_data(sensors_data, sl.TIME_REFERENCE.CURRENT)
-            quaternion = sensors_data.get_imu_data().get_pose().get_orientation().get()
-            #print("IMU Orientation: {}".format(quaternion))
-            linear_acceleration = sensors_data.get_imu_data().get_linear_acceleration()
-            #print("IMU Acceleration: {} [m/sec^2]".format(linear_acceleration))
-            angular_velocity = sensors_data.get_imu_data().get_angular_velocity()
-            #print("IMU Angular Velocity: {} [deg/sec]".format(angular_velocity))
+            quaternion                  = sensors_data.get_imu_data().get_pose().get_orientation().get()
+            linear_acceleration         = sensors_data.get_imu_data().get_linear_acceleration()
+            angular_velocity            = sensors_data.get_imu_data().get_angular_velocity()
 
         return quaternion, linear_acceleration, angular_velocity
 
-    #get depth image from zed camera
-    def get_depth_image(self):
+    def get_distance_image(self):
+        """
+            gets image from depth sensing on zed camera
+            return
+                image: np_array
+
+            for some reason the python garbage collector was deleting the image object
+            so we used copy.deepcopy to clone the object in memory
+        """
         image_zed = sl.Mat()
         if (self.zed.grab() == sl.ERROR_CODE.SUCCESS):
             self.zed.retrieve_image(image_zed, sl.VIEW.DEPTH)
             image = image_zed.get_data()
             return copy.deepcopy(image)
         
-    #get the median depth of all points within bounds of x1, y1, x2, y2
-    def get_median_depth(self, x1, y1, x2, y2):
+    
+    def get_median_distance(self, x1, y1, x2, y2):
+        """
+            gets 5 depth sample points in the rectangle and returns the median of them
+            points are as follows:
+            -----------------------
+            |                     |
+            |          X          |
+            |                     |
+            |    X     X     X    |
+            |                     |
+            |          X          |
+            |                     |
+            -----------------------
+
+            we didnt use all points because it was too slow
+            return
+                median: float
+        """
         cam_info = self.zed.get_camera_information()
-        width = cam_info.camera_configuration.resolution.width
+        width  = cam_info.camera_configuration.resolution.width
         height = cam_info.camera_configuration.resolution.height
 
         #bounds check and success check
@@ -103,18 +140,13 @@ class Zed:
 
         return median
     
-
-        
-def main():
+if __name__ == '__main__':
     zed = Zed()
     state = zed.open()
     while True:
-        image = zed.get_depth_image()
+        image = zed.get_distance_image()
         if (image is not None):
             cv2.imshow("image_test", image)
             cv2.waitKey(1)
         continue
-
-if __name__ == '__main__':
-    main()
 
