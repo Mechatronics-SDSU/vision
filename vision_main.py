@@ -38,8 +38,11 @@ class VideoRunner:
     def __init__(self,  linear_acceleration_x ,  linear_acceleration_y,  linear_acceleration_z, 
                         angular_velocity_x,      angular_velocity_y,     angular_velocity_z, 
                         orientation_x,           orientation_y,          orientation_z, 
-                        depth,
-                        offset_x,                offset_y):
+                        distance,
+                        yolo_offset_x,           yolo_offset_y,
+                        color_offset_x,          color_offset_y,
+                        color,
+                        color_enable,            yolo_enable):
         self.zed = Zed()
         self.cap = None
         self.linear_acceleration_x = linear_acceleration_x
@@ -51,12 +54,17 @@ class VideoRunner:
         self.orientation_x = orientation_x
         self.orientation_y = orientation_y
         self.orientation_z = orientation_z
-        self.distance = depth
-        self.offset_x = offset_x
-        self.offset_y = offset_y
+        self.distance = distance
+        self.yolo_offset_x = yolo_offset_x
+        self.yolo_offset_y = yolo_offset_y
+
+        self.color_offset_x = color_offset_x
+        self.color_offset_y - color_offset_y
+        self.color = color
+        self.yolo_enable = yolo_enable
 
 
-        self.color_filter_enable = True
+        self.color_filter_enable = color_enable
         self.color_filter = ColorFilter()
 
         self.model_path = './models_folder/yolov5m.pt'
@@ -66,6 +74,8 @@ class VideoRunner:
         self.detection = None
         self.skip_frames = 0
         self.frame_count = self.skip_frames
+
+        self.zed, self.cap = self.create_camera_object()
     
     def get_nearest_object(self, results):
         """
@@ -95,7 +105,7 @@ class VideoRunner:
     def set_color_filter(self, color_filter):
         self.color_filter = color_filter
 
-    def get_offset(self, box, results, image):
+    def get_yolo_offset(self, box, results, image):
         """
             gets distance from the center of the nearest object to the center of the image
             input
@@ -103,8 +113,8 @@ class VideoRunner:
                 results: yolov5 results object
                 image: np_array
             return
-                offset_x: int
-                offset_y: int
+                yolo_offset_x: int
+                yolo_offset_y: int
         """
         if (box is None):
             return 0, 0
@@ -119,10 +129,10 @@ class VideoRunner:
         object_center_x = (xB + xA) / 2
         object_center_y = (yB + yA) / 2
         
-        offset_x = center_x - object_center_x
-        offset_y = center_y - object_center_y
+        yolo_offset_x = center_x - object_center_x
+        yolo_offset_y = center_y - object_center_y
         
-        return offset_x, offset_y
+        return yolo_offset_x, yolo_offset_y
         
     def create_camera_object(self):
         """
@@ -233,6 +243,53 @@ class VideoRunner:
         socket = Socket_Client.Client(host, port)
         socket.connect_to_server()
         return socket
+    
+    def run_yolo_detection(self, show_boxes, image):
+        """
+            runs yolo detection on image
+            if show_boxes is set to True, it will draw bounding boxes
+            input
+                show_boxes: bool
+                image: np_array
+            return
+                image: np_array
+        """
+        #run yolo detection
+        results = None
+        if (self.frame_count >= self.skip_frames):
+            results = self.detection.detect_in_image(image)
+            self.frame_count = 0
+        else:
+            self.frame_count += 1
+        if show_boxes:
+            image = gui_helper.draw_boxes(image, results)
+            image = gui_helper.draw_lines(image, results)
+
+        #get distance of nearest object(set to True by default)     
+        if self.zed is not None:
+            distance, box = self.get_nearest_object(results)
+            self.yolo_offset_x.value, self.yolo_offset_y.value = self.get_yolo_offset(box, results, image)
+            self.distance.value = float(distance)
+        return image
+    
+    def run_color_detection(self, image, color):
+        """
+            runs color detection on image
+            input
+                image: np_array
+                color: int
+            return
+                image: np_array
+        """
+
+        position = self.color_filter.auto_average_position()
+        self.color_offset_x.value = position[0] - image.shape[1] // 2
+        self.color_offset_y.value = position[1] - image.shape[0] // 2
+        if self.zed is not None:
+            self.distance.value = self.zed.get_distance_at_point(position[0], position[1])
+
+        return image
+    
 
     def run_loop(self):
         """
@@ -244,47 +301,31 @@ class VideoRunner:
             sends image to server (if enabled)
         """
         show_boxes = True
-        get_distance = True
         show_distance = False
         imu_enable = False
         send_image = False
-        
-        distance = 0
 
         #create socket object
         if send_image:
             socket = self.connect_to_server()
-
-        #create camera objects
-        self.zed, self.cap = self.create_camera_object()
         
         while True:
             image = self.get_image(self.zed, self.cap)
-
+            results = None
+            #run color detection
+            if self.color_filter_enable:
+                image = self.run_color_detection(image, self.color)
             #run yolo detection
-            if (self.frame_count >= self.skip_frames):
-                results = self.detection.detect_in_image(image)
-                self.frame_count = 0
-            else:
-                self.frame_count += 1
+            if self.yolo_enable:
+                image = self.run_yolo_detection(show_boxes, image)
+
+            #starting imu code
+            if (import_success and imu_enable and self.zed is not None):
+                self.share_imu_to_shared_memory()
+
             #get distance image from the zed if zed is initialized and user added the show distance argument
             if self.zed is not None and show_distance:
                 image = self.zed.get_distance_image()
-            #shows boxes (set to True by default)
-            if show_boxes:
-                image = gui_helper.draw_boxes(image, results)
-                image = gui_helper.draw_lines(image, results)
-            #get distance of nearest object(set to True by default)
-            if self.zed is not None and get_distance:
-                distance, box = self.get_nearest_object(results)
-                
-                #set shared memory values
-                self.offset_x.value, self.offset_y.value = self.get_offset(box, results, image)
-                self.distance.value = float(distance)
-                
-            #starting imu code
-            if (import_success and imu_enable):
-                self.share_imu_to_shared_memory()
             
             if send_image:
                 send_process = multiprocessing.Process(target = self.send_image_to_socket, args=(socket, image))

@@ -90,6 +90,33 @@ class Zed:
             image = image_zed.get_data()
             return copy.deepcopy(image)
         
+    def get_distance_at_point(self, x, y):
+        """
+            gets depth at a point in the image
+            return
+                depth: float
+        """
+        cam_info = self.zed.get_camera_information()
+        width  = cam_info.camera_configuration.resolution.width
+        height = cam_info.camera_configuration.resolution.height
+
+        #bounds check and success check
+        if x > width:
+            return -1
+        elif y > height:
+            return -1
+        if self.zed.grab() != sl.ERROR_CODE.SUCCESS :
+            return -1
+        
+        #create depth camera object
+        depth_zed = sl.Mat(cam_info.camera_configuration.resolution.width,
+                            cam_info.camera_configuration.resolution.height,
+                            sl.MAT_TYPE.F32_C1)
+        
+        # Retrieve depth data float 32
+        _, distance = depth_zed.get_value(x, y)
+        return distance
+        
     
     def get_median_distance(self, x1, y1, x2, y2):
         """
