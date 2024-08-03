@@ -3,7 +3,7 @@ import vision.Socket_Client                             as Socket_Client
 import vision.gui_helper                                as gui_helper
 
 from vision.ColorFilter.color_filter                    import ColorFilter
-from vision.ColorFilter.color_filter_config_parser      import ColorFilterConfigParser
+from vision.ColorFilter.color_filter_config_parser      import Color_Config_Parser
 
 import math
 import cv2
@@ -42,9 +42,8 @@ class VideoRunner:
                         yolo_offset_x,           yolo_offset_y,
                         color_offset_x,          color_offset_y,
                         color,
-                        color_enable,            yolo_enable):
-        self.zed = Zed()
-        self.cap = None
+                        color_enable,            yolo_enable,
+                        running):
         self.linear_acceleration_x = linear_acceleration_x
         self.linear_acceleration_y = linear_acceleration_y
         self.linear_acceleration_z = linear_acceleration_z
@@ -59,9 +58,10 @@ class VideoRunner:
         self.yolo_offset_y = yolo_offset_y
 
         self.color_offset_x = color_offset_x
-        self.color_offset_y - color_offset_y
+        self.color_offset_y = color_offset_y
         self.color = color
         self.yolo_enable = yolo_enable
+        self.running = running
 
 
         self.color_filter_enable = color_enable
@@ -75,8 +75,6 @@ class VideoRunner:
         self.skip_frames = 0
         self.frame_count = self.skip_frames
 
-        self.zed, self.cap = self.create_camera_object()
-    
     def get_nearest_object(self, results):
         """
             gets distance of the nearest object from the bounding boxes
@@ -146,22 +144,20 @@ class VideoRunner:
                 zed: zed object
                 cap: cv2.VideoCapture
         """
-        zed = None
-        cap = None
+        self.zed = None
+        self.cap = None
         #import success tests if zed sdk imported successfully
         if import_success:
-            zed = Zed()
-            state = zed.open()
+            self.zed = Zed()
+            state = self.zed.open()
             if state != sl.ERROR_CODE.SUCCESS:
-                zed = None
+                self.zed = None
                 print("Zed camera not found, using webcam")
-                cap = cv2.VideoCapture(0)
+                self.cap = cv2.VideoCapture(0)
         else:
-            zed = None
+            self.zed = None
             print("camera library not found, using webcam")
-            cap = cv2.VideoCapture(0)
-
-        return zed, cap
+            self.cap = cv2.VideoCapture(0)
 
     def send_image_to_socket(self, socket, image):
         """
@@ -176,7 +172,7 @@ class VideoRunner:
             print(e)
             socket.client_socket.close()
 
-    def get_image(self, zed, cap):
+    def get_image(self):
         """
             gets image from camera
             if zed is not None, it will get image from zed
@@ -190,14 +186,15 @@ class VideoRunner:
             return
                 image: np_array
         """
-        if zed is not None:
-            image = zed.get_image()
-        elif cap is not None:
-            _, image = cap.read()
+        if self.zed is not None:
+            image = self.zed.get_image()
+            return image
+        if self.cap is not None:
+            _, image = self.cap.read()
+            return image
         else:
             print("No camera found, exiting")
-        
-        return image
+            return None
 
     def swap_model(self, model_path):
         """
@@ -281,12 +278,15 @@ class VideoRunner:
             return
                 image: np_array
         """
-
-        position = self.color_filter.auto_average_position()
+        
+        #self.color_filter.set_color_target(color)
+        image, position = self.color_filter.auto_average_position(image)
+        if position is None:
+            return image
         self.color_offset_x.value = position[0] - image.shape[1] // 2
         self.color_offset_y.value = position[1] - image.shape[0] // 2
         if self.zed is not None:
-            self.distance.value = self.zed.get_distance_at_point(position[0], position[1])
+            self.distance.value = self.zed.get_distance_at_point(int(position[0]), int(position[1]))
 
         return image
     
@@ -300,24 +300,35 @@ class VideoRunner:
             gets imu data,
             sends image to server (if enabled)
         """
+        print("LOOP")
         show_boxes = True
         show_distance = False
         imu_enable = False
         send_image = False
 
+        self.create_camera_object()
+
         #create socket object
         if send_image:
             socket = self.connect_to_server()
         
-        while True:
-            image = self.get_image(self.zed, self.cap)
+        while self.running.value:
+            image = self.get_image()
+            if image is None:
+                print("NO IMAGE")
+                continue
             results = None
             #run color detection
-            if self.color_filter_enable:
+            if self.color_filter_enable.value:
                 image = self.run_color_detection(image, self.color)
+                # print("COLOR OFFSET", self.color_offset_x.value, "\t", self.color_offset_y.value)
+                
             #run yolo detection
-            if self.yolo_enable:
+            if self.yolo_enable.value:
                 image = self.run_yolo_detection(show_boxes, image)
+
+            cv2.imshow("image_test", image)
+            cv2.waitKey(1)
 
             #starting imu code
             if (import_success and imu_enable and self.zed is not None):
@@ -333,5 +344,44 @@ class VideoRunner:
 
 
 if __name__ == '__main__':
+    ang_vel_x                   = Value('d', 0.0)
+    ang_vel_y                   = Value('d', 0.0)
+    ang_vel_z                   = Value('d', 0.0)
+    lin_acc_x                   = Value('d', 0.0)
+    lin_acc_y                   = Value('d', 0.0)
+    lin_acc_z                   = Value('d', 0.0)
+    orientation_x               = Value('d', 0.0)
+    orientation_y               = Value('d', 0.0)
+    orientation_z               = Value('d', 0.0)   
+    distance                    = Value('d', 0.0)
+    yolo_offset_x               = Value('d', 0.0)
+    yolo_offset_y               = Value('d', 0.0)
+    depth_z                     = Value('d', 0.0)   
+    color                       = Value('i', 0)
+    color_offset_x              = Value('d', 0.0)
+    color_offset_y              = Value('d', 0.0)
+    color_enable                = Value('b', True)
+    yolo_enable                 = Value('b', False)
+    running                     = Value('b', True)
+    vis = VideoRunner(
+        linear_acceleration_x   = lin_acc_x,
+        linear_acceleration_y   = lin_acc_y,
+        linear_acceleration_z   = lin_acc_z,
+        angular_velocity_x      = ang_vel_x,
+        angular_velocity_y      = ang_vel_y,
+        angular_velocity_z      = ang_vel_z,
+        orientation_x           = orientation_x,
+        orientation_y           = orientation_y,
+        orientation_z           = orientation_z,
+        distance                = distance,
+        yolo_offset_x           = yolo_offset_x,
+        yolo_offset_y           = yolo_offset_y,
+        color                   = color,
+        color_offset_x          = color_offset_x,
+        color_offset_y          = color_offset_y,
+        color_enable            = color_enable,
+        yolo_enable             = yolo_enable,
+        running                 = running
+    )
     loop_object = VideoRunner(None)
-    loop_object.run_loop()
+    vis.run_loop()

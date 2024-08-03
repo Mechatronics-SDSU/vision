@@ -54,9 +54,13 @@ class Zed:
             so we used copy.deepcopy to clone the object in memory
         """
         image_zed = sl.Mat()
-        if self.zed.grab() == sl.ERROR_CODE.SUCCESS:
-            self.zed.retrieve_image(image_zed, sl.VIEW.RIGHT)
-            return copy.deepcopy(image_zed.get_data())
+        try:
+            if self.zed.grab() == sl.ERROR_CODE.SUCCESS:
+                self.zed.retrieve_image(image_zed, sl.VIEW.RIGHT)
+                return copy.deepcopy(image_zed.get_data())
+        except RuntimeError:
+            print(RuntimeError)
+            pass
 
     def get_imu(self):
         """
@@ -171,7 +175,7 @@ if __name__ == '__main__':
     zed = Zed()
     state = zed.open()
     while True:
-        image = zed.get_distance_image()
+        image = zed.get_image()
         if (image is not None):
             cv2.imshow("image_test", image)
             cv2.waitKey(1)
