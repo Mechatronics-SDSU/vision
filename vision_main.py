@@ -253,6 +253,8 @@ class VideoRunner:
         """
         #run yolo detection
         results = None
+        if self.detection is None:
+            print("NO YOLO OBJECT")
         if (self.frame_count >= self.skip_frames):
             results = self.detection.detect_in_image(image)
             self.frame_count = 0
