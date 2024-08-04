@@ -68,7 +68,6 @@ class VideoRunner:
         self.color_filter = ColorFilter()
 
         self.model_path = './models_folder/yolov5m.pt'
-        self.detection = yv5.ObjDetModel(self.model_path)
         
         
         self.detection = None
@@ -218,7 +217,7 @@ class VideoRunner:
         
         #set shared memory values
         self.linear_acceleration_x.value = lin_acc[0]
-        self.linear_acceleration_y.value = lin_acc[1]
+        self.linear_acceleration_y.value = lin_acc[1] - 9.8
         self.linear_acceleration_z.value = lin_acc[2]
         self.angular_velocity_x.value = ang_vel[0]
         self.angular_velocity_y.value = ang_vel[1]
@@ -253,8 +252,6 @@ class VideoRunner:
         """
         #run yolo detection
         results = None
-        if self.detection is None:
-            print("NO YOLO OBJECT")
         if (self.frame_count >= self.skip_frames):
             results = self.detection.detect_in_image(image)
             self.frame_count = 0
@@ -284,6 +281,8 @@ class VideoRunner:
         #self.color_filter.set_color_target(color)
         image, position = self.color_filter.auto_average_position(image)
         if position is None:
+            self.color_offset_x.value = 0.0
+            self.color_offset_y.value = 0.0
             return image
         self.color_offset_x.value = position[0] - image.shape[1] // 2
         self.color_offset_y.value = position[1] - image.shape[0] // 2
@@ -305,10 +304,11 @@ class VideoRunner:
         print("LOOP")
         show_boxes = True
         show_distance = False
-        imu_enable = False
+        imu_enable = True
         send_image = False
 
         self.create_camera_object()
+        self.detection = yv5.ObjDetModel(self.model_path)
 
         #create socket object
         if send_image:
@@ -329,9 +329,6 @@ class VideoRunner:
             if self.yolo_enable.value:
                 image = self.run_yolo_detection(show_boxes, image)
 
-            cv2.imshow("image_test", image)
-            cv2.waitKey(1)
-
             #starting imu code
             if (import_success and imu_enable and self.zed is not None):
                 self.share_imu_to_shared_memory()
@@ -339,6 +336,9 @@ class VideoRunner:
             #get distance image from the zed if zed is initialized and user added the show distance argument
             if self.zed is not None and show_distance:
                 image = self.zed.get_distance_image()
+
+            cv2.imshow("image_test", image)
+            cv2.waitKey(1)
             
             if send_image:
                 send_process = multiprocessing.Process(target = self.send_image_to_socket, args=(socket, image))

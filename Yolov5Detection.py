@@ -18,10 +18,12 @@ import torch
 class ObjDetModel:
 
     def __init__(self, model_name):
+        print("initializing yolo object")
         # load pretrained model
         torch.cuda.set_device(0)
         self.model_resolution = 640
-        self.model = torch.hub.load('ultralytics/yolov5', 'custom', path = './models_folder/model.pt', device = 0)
+        self.model = torch.hub.load('ultralytics/yolov5', 'custom', path =  model_name, device = 0)
+        print("yolo init success")
 
     def load_new_model(self, model_name):
         self.model = torch.hub.load('ultralytics/yolov5', 'custom', path = './models_folder/' + model_name, device = 0)
