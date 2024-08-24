@@ -1,15 +1,18 @@
 import vision.Yolov5Detection                           as yv5
 import vision.Socket_Client                             as Socket_Client
 import vision.gui_helper                                as gui_helper
+import vision.gate_detection                            as gate_detection
 
 from vision.ColorFilter.color_filter                    import ColorFilter
 from vision.ColorFilter.color_filter_config_parser      import Color_Config_Parser
+from vision.gate_detection                              import CheckValid
 
 import math
 import cv2
 import multiprocessing
 import time
 from multiprocessing                                    import Value
+import numpy                                            as np
 
 
 
@@ -43,7 +46,7 @@ class VideoRunner:
                         color_offset_x,          color_offset_y,
                         color,
                         color_enable,            yolo_enable,
-                        running):
+                        running, hard_deadzone):
         self.linear_acceleration_x = linear_acceleration_x
         self.linear_acceleration_y = linear_acceleration_y
         self.linear_acceleration_z = linear_acceleration_z
@@ -63,6 +66,8 @@ class VideoRunner:
         self.yolo_enable = yolo_enable
         self.running = running
 
+        self.hard_deadzone = (hard_deadzone - 1) / 2
+
 
         self.color_filter_enable = color_enable
         self.color_filter = ColorFilter()
@@ -73,6 +78,9 @@ class VideoRunner:
         self.detection = None
         self.skip_frames = 0
         self.frame_count = self.skip_frames
+
+        self.validated = False
+        self.locked = False
 
     def get_nearest_object(self, results):
         """
@@ -290,7 +298,63 @@ class VideoRunner:
             self.distance.value = self.zed.get_distance_at_point(int(position[0]), int(position[1]))
 
         return image
-    
+
+    def hough_lines(self, image):
+        crunch =  160 # crunch rate (number of subdivs, lower=more crunch) 720 = no crunch
+        min = 250
+        max = 75
+        downsampled_image = gate_detection.downsample_image(image,crunch,min,max)
+        edges = cv2.Canny(downsampled_image,50,150,apertureSize = 3)
+        lines = cv2.HoughLinesP(image=edges,rho=1,theta=np.pi/180, threshold=100,lines=np.array([]), minLineLength=100,maxLineGap=80)
+        a,b,c = lines.shape
+        print(a)
+        for i in range(a):
+            print(b)
+            if b == 0:
+                cv2.line(image, (lines[i][0][0], lines[i][0][1]), (lines[i][0][2], lines[i][0][3]), (0, 0, 255), 3, cv2.LINE_AA)
+        return image
+
+    def run_gate_detection(self, image):
+        crunch =  160 # crunch rate (number of subdivs, lower=more crunch) 720 = no crunch
+        minimim = 250   
+        maximum = 50
+        downsampled_image = gate_detection.downsample_image(image,crunch,minimim,maximum)
+        middle_row_list, pitch_offset = gate_detection.correct_equator(downsampled_image, self.orientation_x.value)
+        small_gaps_filled = gate_detection.fill_small_gaps(middle_row_list, int(len(middle_row_list) * .01)) # min gap relative to image width in pixels
+        no_horizontal = gate_detection.get_rid_of_max_consecutives(small_gaps_filled, 20)
+
+        average_unweighted_positions = gate_detection.average_cluster_positions(no_horizontal)
+        weighted_position = gate_detection.weighted_cluster_position_average(average_unweighted_positions, .7, downsampled_image.shape[1]) # weight is 0-1, higher = more weighted towards center
+        new_offset_is_valid = self.check_valid.storing_frames(weighted_position)
+        if new_offset_is_valid: self.validated = True
+        if self.validated:
+            if abs(weighted_position - downsampled_image.shape[1] / 2) < self.hard_deadzone:
+                self.locked = True
+            if self.locked:
+                print("Locked!!")
+                self.color_offset_x.value = 1
+            #     if weighted_position == 0: 
+            #         weighted_position = 1 # move forward if doesnt see anything after locking
+            #     self.color_offset_x.value = max(-self.hard_deadzone, min(weighted_position, self.hard_deadzone)) # Clamping to hard deadzone to move forward
+            else: self.color_offset_x.value = weighted_position - downsampled_image.shape[1] / 2 if weighted_position != 0 else 0
+
+        return_image = downsampled_image
+        return_image = cv2.cvtColor(return_image, cv2.COLOR_GRAY2BGR)
+        print("positions len", average_unweighted_positions)
+        for position in average_unweighted_positions:
+            return_image = gate_detection.show_clusters(return_image, position, False, pitch_offset)
+        return gate_detection.show_offset(return_image, weighted_position, new_offset_is_valid, pitch_offset)
+
+    def run_wall_detection(self, image):
+        crunch =  600 # crunch rate (number of subdivs, lower=more crunch) 720 = no crunch
+        min = 255
+        max = 20
+        downsampled_image = gate_detection.downsample_image(image,crunch,min,max)
+        middle_row_list = gate_detection.find_equator(downsampled_image, 180)
+        position = gate_detection.count_changes(middle_row_list)
+        print("median: \t" + str(self.zed.get_median_distance(360, 240, 200, 150)))
+        self.color_offset_x.value = position
+        return downsampled_image
 
     def run_loop(self):
         """
@@ -307,27 +371,42 @@ class VideoRunner:
         imu_enable = True
         send_image = False
 
+        iteration = 0
+
+        self.check_valid = CheckValid()
+
         self.create_camera_object()
-        self.detection = yv5.ObjDetModel(self.model_path)
+        #self.detection = yv5.ObjDetModel(self.model_path)
 
         #create socket object
         if send_image:
             socket = self.connect_to_server()
         
-        while self.running.value:
-            image = self.get_image()
+        # while self.running.value:
+        while True:
+            iteration += 1
+            image = None
+            if self.color_filter_enable.value:
+                image = self.zed.get_distance_image()
+            elif self.yolo_enable.value:
+                image = self.get_image()
+
             if image is None:
                 print("NO IMAGE")
                 continue
             results = None
             #run color detection
             if self.color_filter_enable.value:
-                image = self.run_color_detection(image, self.color)
+                pass
+                #image = self.run_color_detection(image, self.color)
+                image = self.run_gate_detection(image)
+                #image = self.hough_lines(image)
+                #image = self.run_wall_detection(image)
                 # print("COLOR OFFSET", self.color_offset_x.value, "\t", self.color_offset_y.value)
                 
             #run yolo detection
             if self.yolo_enable.value:
-                image = self.run_yolo_detection(show_boxes, image)
+                image = self.run_color_detection(image, self.color)
 
             #starting imu code
             if (import_success and imu_enable and self.zed is not None):
@@ -337,8 +416,12 @@ class VideoRunner:
             if self.zed is not None and show_distance:
                 image = self.zed.get_distance_image()
 
-            cv2.imshow("image_test", image)
-            cv2.waitKey(1)
+            # try:
+            #     # cv2.imshow("image_test", image)
+            #     #cv2.imwrite(f'frame{iteration}', image) 
+            #     # cv2.waitKey(1)
+            # except:
+            #     pass
             
             if send_image:
                 send_process = multiprocessing.Process(target = self.send_image_to_socket, args=(socket, image))

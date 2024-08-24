@@ -31,8 +31,12 @@ class Zed:
         self.tracking_parameters                    = sl.PositionalTrackingParameters()
         self.tracking_parameters.enable_imu_fusion  = True
         self.runtime_parameters                     = sl.RuntimeParameters()
-        #self.err                                    = self.zed.enable_positional_tracking(self.tracking_parameters)
+        self.init_params.coordinate_units           = sl.UNIT.METER
+        self.init_params.depth_minimum_distance     = 1.0
+        #self.err                                    = self.zed.enable_positional
+        # _tracking(self.tracking_parameters)
         self.py_translation                         = sl.Translation()
+        #self.zed.set_camera_settings(sl.VIDEO_SETTINGS.EXPOSURE, 50)
 
     
     def open(self):
