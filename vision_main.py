@@ -38,38 +38,19 @@ class VideoRunner:
     run loop
     """
 
-    def __init__(self,  linear_acceleration_x ,  linear_acceleration_y,  linear_acceleration_z, 
-                        angular_velocity_x,      angular_velocity_y,     angular_velocity_z, 
-                        orientation_x,           orientation_y,          orientation_z, 
-                        distance,
-                        yolo_offset_x,           yolo_offset_y,
-                        color_offset_x,          color_offset_y,
-                        color,
-                        color_enable,            yolo_enable,
-                        running, hard_deadzone):
-        self.linear_acceleration_x = linear_acceleration_x
-        self.linear_acceleration_y = linear_acceleration_y
-        self.linear_acceleration_z = linear_acceleration_z
-        self.angular_velocity_x = angular_velocity_x
-        self.angular_velocity_y = angular_velocity_y
-        self.angular_velocity_z = angular_velocity_z
-        self.orientation_x = orientation_x
-        self.orientation_y = orientation_y
-        self.orientation_z = orientation_z
-        self.distance = distance
-        self.yolo_offset_x = yolo_offset_x
-        self.yolo_offset_y = yolo_offset_y
+    def __init__(self,  shared_memory_object, hard_deadzone):
+        """
+            initializes class
+            input
+                shared_memory_object: SharedMemoryWrapper object
 
-        self.color_offset_x = color_offset_x
-        self.color_offset_y = color_offset_y
-        self.color = color
-        self.yolo_enable = yolo_enable
-        self.running = running
+        """
+
+        self.shared_memory_object = shared_memory_object
 
         self.hard_deadzone = (hard_deadzone - 1) / 2
 
 
-        self.color_filter_enable = color_enable
         self.color_filter = ColorFilter()
 
         self.model_path = './models_folder/yolov5m.pt'
@@ -105,7 +86,7 @@ class VideoRunner:
         return nearest_object_distance, nearest_box
     
     def enable_color_filter(self):
-        self.color_filter_enable = True
+        self.shared_memory_object.color_enable = True
 
     def set_color_filter(self, color_filter):
         self.color_filter = color_filter
@@ -224,15 +205,11 @@ class VideoRunner:
         orientation, lin_acc, ang_vel = self.zed.get_imu()
         
         #set shared memory values
-        self.linear_acceleration_x.value = lin_acc[0]
-        self.linear_acceleration_y.value = lin_acc[1] - 9.8
-        self.linear_acceleration_z.value = lin_acc[2]
-        self.angular_velocity_x.value = ang_vel[0]
-        self.angular_velocity_y.value = ang_vel[1]
-        self.angular_velocity_z.value = ang_vel[2]
-        self.orientation_x.value = orientation[0]
-        self.orientation_y.value = orientation[1]
-        self.orientation_z.value = orientation[2]
+        self.shared_memory_object.imu_lin_acc = lin_acc
+        self.shared_memory_object.imu_ang_vel = ang_vel
+        self.shared_memory_object.imu_orientation = orientation
+
+        self.shared_memory_object.linear_acc[1] -= 9.8
 
     def connect_to_server():
         """
@@ -272,8 +249,10 @@ class VideoRunner:
         #get distance of nearest object(set to True by default)     
         if self.zed is not None:
             distance, box = self.get_nearest_object(results)
-            self.yolo_offset_x.value, self.yolo_offset_y.value = self.get_yolo_offset(box, results, image)
-            self.distance.value = float(distance)
+            yolo_offset_x, yolo_offset_y= self.get_yolo_offset(box, results, image)
+            self.shared_memory_object.yolo_offset[0] = yolo_offset_x
+            self.shared_memory_object.yolo_offset[1] = yolo_offset_y
+            self.shared_memory_object.distance_from_object.value = float(distance)
         return image
     
     def run_color_detection(self, image, color):
@@ -289,13 +268,13 @@ class VideoRunner:
         #self.color_filter.set_color_target(color)
         image, position = self.color_filter.auto_average_position(image)
         if position is None:
-            self.color_offset_x.value = 0.0
-            self.color_offset_y.value = 0.0
+            self.shared_memory_object.color_offset[0] = 0.0
+            self.shared_memory_object.color_offset[1] = 0.0
             return image
-        self.color_offset_x.value = position[0] - image.shape[1] // 2
-        self.color_offset_y.value = position[1] - image.shape[0] // 2
+        self.shared_memory_object.color_offset[0] = position[0] - image.shape[1] // 2
+        self.shared_memory_object.color_offset[1] = position[1] - image.shape[0] // 2
         if self.zed is not None:
-            self.distance.value = self.zed.get_distance_at_point(int(position[0]), int(position[1]))
+            self.shared_memory_object.distance_from_object.value = self.zed.get_distance_at_point(int(position[0]), int(position[1]))
 
         return image
 
@@ -332,11 +311,11 @@ class VideoRunner:
                 self.locked = True
             if self.locked:
                 print("Locked!!")
-                self.color_offset_x.value = 1
+                self.self.shared_memory_object.gate_offset[0].value = 1
             #     if weighted_position == 0: 
             #         weighted_position = 1 # move forward if doesnt see anything after locking
-            #     self.color_offset_x.value = max(-self.hard_deadzone, min(weighted_position, self.hard_deadzone)) # Clamping to hard deadzone to move forward
-            else: self.color_offset_x.value = weighted_position - downsampled_image.shape[1] / 2 if weighted_position != 0 else 0
+            #     self.self.shared_memory_object.gate_offset[0].value = max(-self.hard_deadzone, min(weighted_position, self.hard_deadzone)) # Clamping to hard deadzone to move forward
+            else: self.self.shared_memory_object.gate_offset[0].value = weighted_position - downsampled_image.shape[1] / 2 if weighted_position != 0 else 0
 
         return_image = downsampled_image
         return_image = cv2.cvtColor(return_image, cv2.COLOR_GRAY2BGR)
@@ -353,7 +332,7 @@ class VideoRunner:
         middle_row_list = gate_detection.find_equator(downsampled_image, 180)
         position = gate_detection.count_changes(middle_row_list)
         print("median: \t" + str(self.zed.get_median_distance(360, 240, 200, 150)))
-        self.color_offset_x.value = position
+        self.shared_memory_object.gate_offset[0].value = position
         return downsampled_image
 
     def run_loop(self):
@@ -386,9 +365,9 @@ class VideoRunner:
         while True:
             iteration += 1
             image = None
-            if self.color_filter_enable.value:
+            if self.shared_memory_object.gate_enable.value:
                 image = self.zed.get_distance_image()
-            elif self.yolo_enable.value:
+            elif self.shared_memory_object.yolo_enable.value:
                 image = self.get_image()
 
             if image is None:
@@ -396,7 +375,7 @@ class VideoRunner:
                 continue
             results = None
             #run color detection
-            if self.color_filter_enable.value:
+            if self.shared_memory_object.gate_enable.value:
                 pass
                 #image = self.run_color_detection(image, self.color)
                 image = self.run_gate_detection(image)
@@ -405,7 +384,7 @@ class VideoRunner:
                 # print("COLOR OFFSET", self.color_offset_x.value, "\t", self.color_offset_y.value)
                 
             #run yolo detection
-            if self.yolo_enable.value:
+            if self.shared_memory_object.yolo_enable.value:
                 image = self.run_color_detection(image, self.color)
 
             #starting imu code
