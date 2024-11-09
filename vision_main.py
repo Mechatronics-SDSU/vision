@@ -1,11 +1,11 @@
-import vision.Yolov5Detection                           as yv5
-import vision.Socket_Client                             as Socket_Client
-import vision.gui_helper                                as gui_helper
-import vision.gate_detection                            as gate_detection
+import modules.vision.Yolov5Detection                           as yv5
+import modules.vision.Socket_Client                             as Socket_Client
+import modules.vision.gui_helper                                as gui_helper
+import modules.vision.gate_detection                            as gate_detection
 
-from vision.ColorFilter.color_filter                    import ColorFilter
-from vision.ColorFilter.color_filter_config_parser      import Color_Config_Parser
-from vision.gate_detection                              import CheckValid
+from modules.vision.ColorFilter.color_filter                    import ColorFilter
+from modules.vision.ColorFilter.color_filter_config_parser      import Color_Config_Parser
+from modules.vision.gate_detection                              import CheckValid
 
 import math
 import cv2
@@ -20,7 +20,7 @@ import numpy                                            as np
 import_success = True
 try:
     import pyzed.sl                                     as sl 
-    from vision.Zed_Wrapper                             import Zed
+    from modules.vision.Zed_Wrapper                             import Zed
 except:
     print("Zed library not found")
     import_success = False

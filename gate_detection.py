@@ -2,6 +2,14 @@ import time
 import cv2
 import numpy        as np
 
+"""
+    discord: @kialli
+    github: @kchan5071
+
+    Detects robosub gate, drives towards it after confidence threshold
+
+"""
+
 def downsample_image(image, block_size, min_depth, max_depth):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     height, width, _ = image.shape
