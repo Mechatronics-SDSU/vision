@@ -184,4 +184,3 @@ if __name__ == '__main__':
             cv2.imshow("image_test", image)
             cv2.waitKey(1)
         continue
-
