@@ -65,8 +65,8 @@ class Recorder:
    
 if __name__ == '__main__':
 
-    videoName = input("Enter name of new video file: ")
-    amountTime = int(input("how long is the video in seconds?: "))
+    videoName = sys.argv[1]
+    amountTime = int(sys.argv[2])
     rec = Recorder()   
     videoFolderPath = "launch/vision/videos"
     if not os.path.exists(videoFolderPath):
