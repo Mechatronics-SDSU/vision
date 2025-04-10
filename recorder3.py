@@ -68,7 +68,9 @@ if __name__ == '__main__':
     videoName = sys.argv[1]
     amountTime = int(sys.argv[2])
     rec = Recorder()   
-    videoFolderPath = "launch/vision/videos"
+   #videoFolderPath = "launch/vision/videos"
+    videoFolderPath = sys.argv[3]
+    
     if not os.path.exists(videoFolderPath):
         os.makedirs(videoFolderPath)
     rec.startRec1(videoFolderPath, videoName, amountTime)
