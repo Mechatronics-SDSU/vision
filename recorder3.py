@@ -7,6 +7,7 @@ import time
 import sys
 import numpy as np
 from Zed_Wrapper   import Zed
+import subprocess
 
 "meows"
 
@@ -68,11 +69,13 @@ if __name__ == '__main__':
     videoName = sys.argv[1]
     amountTime = int(sys.argv[2])
     rec = Recorder()   
-   #videoFolderPath = "launch/vision/videos"
-    videoFolderPath = sys.argv[3]
+    videoFolderPath = "launch/vision/videos" #local path
+    newFolderPath = sys.argv[3] #remote path
+    newFolderPath = os.path.join(newFolderPath, f"{videoName}.mp4")
     
     if not os.path.exists(videoFolderPath):
         os.makedirs(videoFolderPath)
     rec.startRec1(videoFolderPath, videoName, amountTime)
-    print("finished program")
+    
+    newVideoPath = os.path.join(videoFolderPath,f"{videoName}.mp4" )
     
