@@ -7,6 +7,7 @@ import time
 import sys
 import numpy as np
 from Zed_Wrapper   import Zed
+import subprocess
 
 "meows"
 
@@ -68,9 +69,20 @@ if __name__ == '__main__':
     videoName = sys.argv[1]
     amountTime = int(sys.argv[2])
     rec = Recorder()   
-    videoFolderPath = "launch/vision/videos"
+    videoFolderPath = "launch/vision/videos" #local path
+    newFolderPath = sys.argv[3] #remote path
+    newFolderPath = os.path.join(newFolderPath, f"{videoName}.mp4")
+    
     if not os.path.exists(videoFolderPath):
         os.makedirs(videoFolderPath)
     rec.startRec1(videoFolderPath, videoName, amountTime)
-    print("finished program")
+    
+    newVideoPath = os.path.join(videoFolderPath,f"{videoName}.mp4" )
+    scp_command = f"scp mechatronics@192.168.194.5:{newVideoPath} {newFolderPath}"
+
+    result = subprocess.run(scp_command, shell=True, capture_output=True, text=True)
+
+    if result.returncode != 0:
+     print("SCP failed:", result.stderr)
+    else: print("finished program")
     
